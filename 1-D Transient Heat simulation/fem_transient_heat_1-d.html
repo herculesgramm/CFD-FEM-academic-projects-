@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Transient Heat Conduction in a Metal Rod: Time-Stepping and Stability</title>
+<style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#eef2f5;--panel:#fff;--ink:#12263a;--mute:#52667a;--line:#c9d4de;--fem:#1b6ca8;--exact:#b3205f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a25;--panel:#16232f;--ink:#e6edf3;--mute:#9fb2c3;--line:#2b3d4e;--fem:#5db0ee;--exact:#ff6fa5}}
+:root[data-theme="dark"]{--bg:#0f1a25;--panel:#16232f;--ink:#e6edf3;--mute:#9fb2c3;--line:#2b3d4e;--fem:#5db0ee;--exact:#ff6fa5}
+*,*:before,*:after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:32px 20px 56px}
+h1{font:700 clamp(28px,5vw,40px)/1.15 Georgia,"Times New Roman",serif;margin:0 0 12px;letter-spacing:-.01em}
+h2{font:700 22px/1.3 Georgia,serif;margin:40px 0 10px}
+p{margin:0 0 12px;max-width:68ch}
+.lead{font-size:18px;color:var(--mute)}
+.tags{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0;padding:0;list-style:none}
+.tags li{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 12px;font-size:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px}
+.card{display:grid;gap:6px;margin-bottom:28px}
+.card small{color:var(--mute)}
+.demo header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;margin-bottom:12px}
+.demo label{font-weight:600}
+input[type=range]{flex:1 1 200px;accent-color:var(--fem)}
+select{font:inherit;padding:2px 6px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:4px}
+.modes{display:flex;flex-wrap:wrap;gap:6px 18px;margin-bottom:12px}
+.modes label{font-weight:400}
+svg{width:100%;height:auto;display:block}
+canvas{display:block;width:min(100%,560px);aspect-ratio:2/1;border:1px solid var(--line)}
+.bar{height:10px;width:min(100%,560px);margin-top:8px;border-radius:2px;background:linear-gradient(90deg,#142850,#1b6ca8,#f0dc78)}
+.scale{display:flex;justify-content:space-between;width:min(100%,560px);font-size:13px;color:var(--mute)}
+.key span{display:inline-block;width:22px;height:0;border-top:3px solid var(--fem);vertical-align:middle;margin-right:6px}
+.key span.e{border-top:3px dashed var(--exact);margin-left:14px}
+.key span.r{border-top:2px dashed var(--mute);margin-left:14px}
+.stats{display:flex;flex-wrap:wrap;gap:4px 28px;margin-top:10px;font-size:14px;color:var(--mute)}
+.stats b{color:var(--ink)}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:420px;font-size:15px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right}
+th:first-child,td:first-child{text-align:left}
+ul.find{padding-left:20px;margin:0}ul.find li{margin-bottom:8px;max-width:68ch}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace}
+.note{margin-top:8px;color:var(--mute);font-size:14px}
+</style>
+</head>
+<body>
+<main>
+<section class="panel card" aria-label="Portfolio card">
+  <h1>Transient Heat Conduction in a Metal Rod: Time-Stepping and Stability</h1>
+  <p class="lead">A Galerkin finite element model of a metal rod cooling toward a steady state, used to compare explicit and implicit time-stepping. The explicit scheme blows up, the implicit one does not.</p>
+  <ul class="tags"><li>Galerkin FEM</li><li>θ-method time stepping</li><li>Quadratic elements</li><li>Stability analysis</li><li>Transient heat transfer</li></ul>
+</section>
+
+<h2>The problem</h2>
+<p>A metal rod of length L = 0.2 m starts at 100 °C. Its left end is insulated, its right end is held at 50 °C, and a heat source acts inside it. Temperature T(x, t) obeys:</p>
+<p><code>∂T/∂t = a ∂²T/∂x² + q,&nbsp; ∂T/∂x(0) = 0,&nbsp; T(L) = 50 °C,&nbsp; T(x, 0) = 100 °C</code></p>
+<p>Given values: k = 2 W/m·K, ρ = 6000 kg/m³, c<sub>p</sub> = 250 J/kg·K, and a heat source of 1 kJ/s·m³. The assignment asked for six things: derive the weak form, write a finite element code with 3-point Gauss integration that reads its inputs from a file, study mesh and time-step refinement for two schemes, find the time to reach steady state, compute the heat loss at the right end, and replace the insulated end with a fixed heat flux.</p>
+
+<figure class="panel" style="margin:16px 0 0">
+<svg viewBox="0 0 640 230" role="img" aria-label="Diagram of a thin metal rod from x = 0 to x = L. The left end is insulated, the right end is held at 50 degrees Celsius, an internal heat source acts along the rod, and heat flows toward the cold right end.">
+<defs>
+<pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" stroke="var(--mute)" stroke-width="2"/></pattern>
+<marker id="ah" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9z" fill="var(--exact)"/></marker>
+<marker id="ax" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9z" fill="var(--ink)"/></marker>
+</defs>
+<g font-size="15" fill="var(--ink)" text-anchor="middle">
+<rect x="60" y="62" width="28" height="76" fill="url(#hatch)" stroke="var(--mute)"/>
+<rect x="528" y="62" width="28" height="76" fill="var(--fem)" fill-opacity=".35" stroke="var(--fem)"/>
+<rect x="88" y="85" width="440" height="30" fill="var(--exact)" fill-opacity=".2" stroke="var(--ink)" stroke-width="1.5"/>
+<text x="74" y="48">Insulated end</text><text x="74" y="158">∂T/∂x = 0</text>
+<text x="542" y="48">Fixed temperature</text><text x="542" y="158">T = 50 °C</text>
+<text x="308" y="105">internal heat source q</text>
+<text x="308" y="136" fill="var(--mute)">initially T(x, 0) = 100 °C</text>
+<line x1="130" y1="72" x2="500" y2="72" stroke="var(--exact)" stroke-width="3" marker-end="url(#ah)"/>
+<text x="315" y="58" fill="var(--exact)">heat flows toward the cold end</text>
+<g stroke="var(--line)" stroke-dasharray="4 4"><line x1="88" y1="138" x2="88" y2="189"/><line x1="528" y1="138" x2="528" y2="189"/></g>
+<line x1="70" y1="195" x2="610" y2="195" stroke="var(--ink)" stroke-width="1.5" marker-end="url(#ax)"/>
+<g stroke="var(--ink)" stroke-width="1.5"><line x1="88" y1="189" x2="88" y2="201"/><line x1="528" y1="189" x2="528" y2="201"/></g>
+<text x="88" y="220">0</text><text x="528" y="220">L = 0.2 m</text><text x="624" y="200" font-style="italic">x</text>
+</g>
+</svg>
+<figcaption class="note">The rod, its boundary conditions, the direction of heat flow and the x axis.</figcaption>
+</figure>
+
+<h2>Try it: pick a time-stepping scheme</h2>
+<div class="panel demo">
+  <div class="modes" role="radiogroup" aria-label="Time-stepping scheme">
+    <label><input type="radio" name="th" value="0"> θ = 0, explicit</label>
+    <label><input type="radio" name="th" value="0.5"> θ = 0.5, trapezoidal</label>
+    <label><input type="radio" name="th" value="1" checked> θ = 1, fully implicit</label>
+  </div>
+  <header>
+    <label for="t">Time: <output id="tv">60</output> × 10³ s</label>
+    <input id="t" type="range" min="0" max="200" step="2" value="60">
+  </header>
+  <svg id="plot" viewBox="0 0 640 300" role="img" aria-label="Temperature across the rod at the chosen time"></svg>
+  <div class="key"><span></span>FEM<span class="e"></span>Analytical solution</div>
+  <div class="stats"><span>T at x = 0, FEM: <b id="t0">–</b></span><span>Analytical: <b id="te">–</b></span><span>Largest difference: <b id="dm">–</b></span></div>
+  <div class="stats"><b id="st"></b></div>
+  <div class="stats">All three schemes use 40 elements and Δt = 25 s, and the solver runs live in your browser with 2-node elements. The analytical solution is an exact eigenfunction series. Material values are those given in the assignment.</div>
+</div>
+
+<h2>Approach</h2>
+<ul class="find">
+<li><b>Space.</b> Galerkin finite elements turn the equation into a system of ordinary differential equations, [M]{Ṫ} + [K]{T} = {F}. The report used 3-node quadratic elements.</li>
+<li><b>Time.</b> A θ-method blends the old and new time levels: θ = 0 is explicit, θ = 0.5 is the trapezoidal rule, θ = 1 is fully implicit.</li>
+<li><b>Integration and code.</b> Element integrals use 3-point Gauss quadrature. The code reads the material values, θ, element count, simulated time and time step from a data file.</li>
+<li><b>Boundary conditions.</b> The insulated end comes in naturally through the weak form. The fixed 50 °C end is imposed directly.</li>
+<li><b>Mesh study.</b> Start with 10 elements and Δt = 100 s, then double the elements and halve Δt, up to 80 elements and 12.5 s.</li>
+<li><b>Steady state.</b> The analytical steady-state solution is computed first. The time to steady state is the first time the largest deviation from it falls to about 1%.</li>
+<li><b>Further studies.</b> Time to steady state against rod length and source strength, heat loss at the right end over time, and a heat-flux condition on the left end in place of insulation.</li>
+</ul>
+
+<h2>Results</h2>
+<div class="panel tbl">
+<table>
+<thead><tr><th>Scheme</th><th>Outcome in the report (20 elements, Δt = 50 s)</th></tr></thead>
+<tbody>
+<tr><td>θ = 0, explicit</td><td>Unstable: temperatures reach about 10⁹⁴ with sawtooth oscillations</td></tr>
+<tr><td>θ = 0.5, trapezoidal</td><td>Stable</td></tr>
+<tr><td>θ = 1, fully implicit</td><td>Stable, settles at about 60 °C on the insulated end</td></tr>
+</tbody></table>
+</div>
+<p class="note">Read from the report plots. The demo above uses 40 elements and Δt = 25 s for all three schemes and shows the same stability behavior.</p>
+
+<h2>What I found</h2>
+<ul class="find">
+<li>The explicit scheme is only conditionally stable. With these mesh sizes the time steps used are too large for it, so the solution diverges. The fully implicit scheme is stable for any time step.</li>
+<li>Heat loss at the right end falls exponentially with time and levels off at about 200 W/m².</li>
+<li>Time to steady state is about 1.2×10⁵ s and grows roughly with the square of rod length, as diffusion scaling predicts. One run shows an unexpected dip near L = 0.5 m that I did not explain.</li>
+<li>Source strength has only a weak, roughly linear effect: about a 4% drop in settling time across the range tested. A likely reason is the 1% criterion itself. A stronger source raises the steady temperature, so 1% of it is a larger tolerance and is reached sooner.</li>
+<li>The analytical steady state is T = 50 + (S/2k)(L² − x²). It gives 60 °C on the insulated end and a loss of S·L = 200 W/m² at the right end, and the computed heat-loss curve settles exactly at 200 W/m².</li>
+<li>Adding a 50 W/m² heat flux on the left end raises the steady temperature, especially on that end, and shortens the time to steady state.</li>
+</ul>
+
+<h2>Key equations</h2>
+<pre>Steady state:           T(x) = 50 + (S / 2k)(L² − x²)
+Semi-discrete system:   [M]{Ṫ} + [K]{T} = {F}
+θ-method update:        ([M] + θΔt[K]) {T}ˢ⁺¹ = ([M] − (1−θ)Δt[K]) {T}ˢ + Δt{F}</pre>
+</main>
+
+<script>
+const L=0.2,KC=2,RC=1.5e6,SRC=1000,A=KC/RC,Q=SRC/RC;
+function run(n,dt,th,tEnd){
+  const h=L/n,T=new Float64Array(n+1).fill(100);T[n]=50;
+  const ad=new Float64Array(n),bd=new Float64Array(n),f=new Float64Array(n),w=new Float64Array(n),den=new Float64Array(n),g=new Float64Array(n);
+  const Ao=h/6-th*dt*A/h,Bo=h/6+(1-th)*dt*A/h;
+  for(let i=0;i<n;i++){const e=i===0,md=e?h/3:2*h/3,kd=e?A/h:2*A/h;ad[i]=md+th*dt*kd;bd[i]=md-(1-th)*dt*kd;f[i]=dt*Q*(e?h/2:h)}
+  den[0]=ad[0];for(let i=1;i<n;i++){w[i]=Ao/den[i-1];den[i]=ad[i]-w[i]*Ao}
+  const steps=Math.round(tEnd/dt);let blown=false;
+  for(let s=0;s<steps;s++){
+    for(let i=0;i<n;i++){let r=bd[i]*T[i]+Bo*T[i+1]+f[i];if(i>0)r+=Bo*T[i-1];if(i===n-1)r-=Ao*50;g[i]=i?r-w[i]*g[i-1]:r}
+    T[n-1]=g[n-1]/den[n-1];for(let i=n-2;i>=0;i--)T[i]=(g[i]-Ao*T[i+1])/den[i];
+    if(!isFinite(T[0])||Math.abs(T[0])>1e100){blown=true;break}
+  }
+  let mx=0;for(let i=0;i<=n;i++)mx=Math.max(mx,Math.abs(T[i]));
+  return {T,h,blown,mx};
+}
+//--UI--
+function exactT(x,t){
+  if(t===0)return x>=L?50:100;
+  let s=0;
+  for(let n=1;n<=80;n++){const lam=(2*n-1)*Math.PI/(2*L),c=2/L*(n%2?1:-1)*(50/lam-20/(L*L*lam**3));s+=c*Math.cos(lam*x)*Math.exp(-A*lam*lam*t)}
+  return 50+(Q/(2*A))*(L*L-x*x)+s;
+}
+const $=id=>document.getElementById(id),sv=$('plot'),N=40,DT=25;
+const W=640,H=300,pl=44,pr=12,pt=12,pb=28,y0=40,y1=110;
+const sx=x=>pl+x/L*(W-pl-pr),sy=y=>pt+(y1-Math.max(y0,Math.min(y1,y)))/(y1-y0)*(H-pt-pb);
+function draw(){
+  const th=+document.querySelector('input[name=th]:checked').value,t=+$('t').value*1000;
+  $('tv').textContent=$('t').value;
+  const r=run(N,DT,th,t);
+  let s='<g stroke="var(--line)" fill="var(--mute)" font-size="12">';
+  [50,60,70,80,90,100].forEach(v=>{s+=`<line x1="${pl}" x2="${W-pr}" y1="${sy(v)}" y2="${sy(v)}"/><text x="${pl-8}" y="${sy(v)+4}" text-anchor="end" stroke="none">${v}</text>`});
+  [0,0.05,0.1,0.15,0.2].forEach(v=>{s+=`<text x="${sx(v)}" y="${H-8}" text-anchor="middle" stroke="none">${v}</text>`});
+  s+='</g>';
+  let p='';for(let i=0;i<=200;i++){const x=L*i/200;p+=(i?'L':'M')+sx(x).toFixed(1)+' '+sy(exactT(x,t)).toFixed(1)}
+  s+=`<path d="${p}" fill="none" stroke="var(--exact)" stroke-width="2.5" stroke-dasharray="7 5"/>`;
+  let q='';for(let i=0;i<r.T.length;i++)q+=(i?'L':'M')+sx(i*r.h).toFixed(1)+' '+sy(r.T[i]).toFixed(1);
+  s+=`<path d="${q}" fill="none" stroke="var(--fem)" stroke-width="2.5"/>`;
+  sv.innerHTML=s;
+  const fmt=v=>Math.abs(v)>1e4?v.toExponential(2):v.toFixed(2)+' °C';
+  let dm=0;for(let i=0;i<r.T.length;i++)dm=Math.max(dm,Math.abs(r.T[i]-exactT(i*r.h,t)));
+  $('t0').textContent=r.blown?'diverged':fmt(r.T[0]);$('te').textContent=exactT(0,t).toFixed(2)+' °C';
+  $('dm').textContent=r.blown?'diverged':fmt(dm);
+  $('st').textContent=(r.blown||r.mx>1e3)?'Unstable: max |T| reaches '+(r.blown?'above 1e100':r.mx.toExponential(2)):'Stable';
+}
+document.querySelectorAll('input[name=th]').forEach(e=>e.addEventListener('change',draw));
+$('t').addEventListener('input',draw);draw();
+</script>
+</body>
+</html>
