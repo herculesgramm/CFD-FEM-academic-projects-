@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nonlinear Boundary Value Problem: Picard vs Newton-Raphson</title>
+<style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#eef2f5;--panel:#fff;--ink:#12263a;--mute:#52667a;--line:#c9d4de;--fem:#1b6ca8;--exact:#b3205f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a25;--panel:#16232f;--ink:#e6edf3;--mute:#9fb2c3;--line:#2b3d4e;--fem:#5db0ee;--exact:#ff6fa5}}
+:root[data-theme="dark"]{--bg:#0f1a25;--panel:#16232f;--ink:#e6edf3;--mute:#9fb2c3;--line:#2b3d4e;--fem:#5db0ee;--exact:#ff6fa5}
+*,*:before,*:after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:32px 20px 56px}
+h1{font:700 clamp(28px,5vw,40px)/1.15 Georgia,"Times New Roman",serif;margin:0 0 12px;letter-spacing:-.01em}
+h2{font:700 22px/1.3 Georgia,serif;margin:40px 0 10px}
+p{margin:0 0 12px;max-width:68ch}
+.lead{font-size:18px;color:var(--mute)}
+.tags{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0;padding:0;list-style:none}
+.tags li{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 12px;font-size:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px}
+.card{display:grid;gap:6px;margin-bottom:28px}
+.card small{color:var(--mute)}
+.demo header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;margin-bottom:12px}
+.demo label{font-weight:600}
+input[type=range]{flex:1 1 200px;accent-color:var(--fem)}
+select{font:inherit;padding:2px 6px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:4px}
+.modes{display:flex;flex-wrap:wrap;gap:6px 18px;margin-bottom:12px}
+.modes label{font-weight:400}
+svg{width:100%;height:auto;display:block}
+canvas{display:block;width:min(100%,560px);aspect-ratio:2/1;border:1px solid var(--line)}
+.bar{height:10px;width:min(100%,560px);margin-top:8px;border-radius:2px;background:linear-gradient(90deg,#142850,#1b6ca8,#f0dc78)}
+.scale{display:flex;justify-content:space-between;width:min(100%,560px);font-size:13px;color:var(--mute)}
+.key span{display:inline-block;width:22px;height:0;border-top:3px solid var(--fem);vertical-align:middle;margin-right:6px}
+.key span.e{border-top:3px dashed var(--exact);margin-left:14px}
+.key span.r{border-top:2px dashed var(--mute);margin-left:14px}
+.stats{display:flex;flex-wrap:wrap;gap:4px 28px;margin-top:10px;font-size:14px;color:var(--mute)}
+.stats b{color:var(--ink)}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:420px;font-size:15px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right}
+th:first-child,td:first-child{text-align:left}
+ul.find{padding-left:20px;margin:0}ul.find li{margin-bottom:8px;max-width:68ch}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace}
+.note{margin-top:8px;color:var(--mute);font-size:14px}
+</style>
+</head>
+<body>
+<main>
+<section class="panel card" aria-label="Portfolio card">
+  <h1>Nonlinear Boundary Value Problem: Picard vs Newton-Raphson</h1>
+  <p class="lead">A finite element solution of a strongly nonlinear differential equation by two iterative methods, comparing how fast each converges and how much the starting guess matters.</p>
+  <ul class="tags"><li>Galerkin FEM</li><li>Picard iteration</li><li>Newton-Raphson</li><li>Quadratic elements</li><li>Nonlinear solvers</li></ul>
+  <small>University of Thessaly, Mechanical Engineering. Computational Fluid Dynamics with Finite Elements course, Assignment 3</small>
+</section>
+
+<h2>The problem</h2>
+<p>Find u(x) on [0, 1] that satisfies:</p>
+<p><code>−d/dx[(u + √2) du/dx] + sin(−2u) du/dx + u eᵘ cos u = 1</code>, with u′(0) = 0 and u(1) = −1.</p>
+<p>The equation is nonlinear, so the finite element system cannot be solved in one step. Both methods start from a guess and improve it repeatedly.</p>
+
+<h2>Try it: choose a starting guess</h2>
+<div class="panel demo">
+  <header>
+    <label for="u0">Initial guess: <output id="uv">0.04</output></label>
+    <input id="u0" type="range" min="-2" max="3" step="0.02" value="0.04">
+  </header>
+  <svg id="plot" viewBox="0 0 640 280" role="img" aria-label="Converged solutions from Picard and Newton-Raphson"></svg>
+  <div class="key"><span></span>Picard<span class="e"></span>Newton-Raphson<span class="r"></span>Reference (guess 0.04)</div>
+  <div class="stats"><span>Picard: <b id="pi">–</b></span><span>Newton-Raphson: <b id="ni">–</b></span></div>
+  <div class="stats">The solvers run live in your browser with 40 two-node elements. The report used quadratic elements, so the exact guess limits it reports may differ slightly.</div>
+</div>
+
+<h2>Approach</h2>
+<ul class="find">
+<li><b>Discretisation.</b> Multiplying by a test function and integrating by parts gives element equations in the nodal values u<sub>j</sub>. The insulated end is a natural boundary condition and u(1) = −1 is imposed directly.</li>
+<li><b>Picard.</b> Freeze the nonlinear coefficients at the previous iterate and solve the resulting linear system [K(u)]{u} = {F} + {S}. Repeat until the change is negligible.</li>
+<li><b>Newton-Raphson.</b> Write the discrete equations as a residual {R} = 0, expand with a Taylor series, and solve (∂R/∂u){δu} = −{R} for each correction. This needs the full Jacobian, which I derived by hand.</li>
+<li><b>Comparison.</b> Relative error per iteration for several starting guesses, measured against the solution obtained from a guess of 0.04.</li>
+</ul>
+
+<h2>Results</h2>
+<div class="panel tbl">
+<table>
+<thead><tr><th>Method</th><th>Guesses that converge to the correct solution</th><th>Iterations</th></tr></thead>
+<tbody>
+<tr><td>Newton-Raphson</td><td>−0.8 to 1</td><td>about 8 to 15</td></tr>
+<tr><td>Picard</td><td>up to 650, no lower limit</td><td>up to about 37</td></tr>
+</tbody></table>
+</div>
+<p class="note">Read from the report plots, so iteration counts are approximate.</p>
+
+<h2>What I found</h2>
+<ul class="find">
+<li>The starting guess does not change how fast either method converges. It does change which answer you get.</li>
+<li>Newton-Raphson is faster but fragile: for guesses near −1 it settles on a different answer, with relative error around −60 compared to the correct solution.</li>
+<li>Picard is slower but forgiving. It stays accurate over a very wide range of guesses and only diverges for very large ones.</li>
+<li>The converged solution starts near u = −0.15 at x = 0 and falls to −1 at x = 1.</li>
+</ul>
+
+<h2>Key equations</h2>
+<pre>Picard:           [K(uᵐ⁻¹)] {uᵐ} = {F} + {S}
+Newton-Raphson:   (∂R/∂u)ᵐ⁻¹ {δu} = −{R}ᵐ⁻¹ ,  uᵐ = uᵐ⁻¹ + δu</pre>
+</main>
+
+<script>
+const SQ=Math.SQRT2,N=40,G=1/Math.sqrt(3);
+function thomas(lo,di,up,r){
+  const n=di.length,c=new Float64Array(n),d=new Float64Array(n),x=new Float64Array(n);
+  c[0]=up[0]/di[0];d[0]=r[0]/di[0];
+  for(let i=1;i<n;i++){const m=di[i]-lo[i]*c[i-1];c[i]=up[i]/m;d[i]=(r[i]-lo[i]*d[i-1])/m}
+  x[n-1]=d[n-1];for(let i=n-2;i>=0;i--)x[i]=d[i]-c[i]*x[i+1];return x;
+}
+function sys(u,mode){
+  const n=N,m=n+1,h=1/n,lo=new Float64Array(m),di=new Float64Array(m),up=new Float64Array(m),r=new Float64Array(m);
+  for(let e=0;e<n;e++)for(const s of [-G,G]){
+    const p=[(1-s)/2,(1+s)/2],dp=[-1/h,1/h],jw=h/2,uq=p[0]*u[e]+p[1]*u[e+1],du=dp[0]*u[e]+dp[1]*u[e+1];
+    const eu=Math.exp(uq),cu=Math.cos(uq),su=Math.sin(uq),s2=Math.sin(-2*uq),c2=Math.cos(-2*uq);
+    for(let i=0;i<2;i++){
+      if(mode==='n')r[e+i]+=(dp[i]*(uq+SQ)*du+p[i]*s2*du+p[i]*uq*eu*cu-p[i])*jw;else r[e+i]+=p[i]*jw;
+      for(let j=0;j<2;j++){
+        const v=mode==='n'
+          ?dp[i]*p[j]*du+dp[i]*(uq+SQ)*dp[j]+p[i]*(-2*c2)*p[j]*du+p[i]*s2*dp[j]+p[i]*p[j]*eu*(cu+uq*cu-uq*su)
+          :dp[i]*dp[j]*(uq+SQ)+p[i]*dp[j]*s2+p[i]*p[j]*eu*cu;
+        const a=e+i,b=e+j;if(b===a)di[a]+=v*jw;else if(b>a)up[a]+=v*jw;else lo[a]+=v*jw;
+      }
+    }
+  }
+  lo[n]=0;di[n]=1;
+  return {lo,di,up,r};
+}
+function solve(mode,u0){
+  let u=new Float64Array(N+1).fill(u0);u[N]=-1;
+  for(let it=1;it<=200;it++){
+    const {lo,di,up,r}=sys(u,mode);let mx=0;
+    if(mode==='n'){r[N]=0;const dl=thomas(lo,di,up,r.map(v=>-v));for(let i=0;i<=N;i++){u[i]+=dl[i];mx=Math.max(mx,Math.abs(dl[i]))}}
+    else{r[N]=-1;const un=thomas(lo,di,up,r);for(let i=0;i<=N;i++){mx=Math.max(mx,Math.abs(un[i]-u[i]));u[i]=un[i]}}
+    if(!isFinite(mx)||mx>1e8)return {u,it,ok:false};
+    if(mx<1e-8)return {u,it,ok:true};
+  }
+  return {u,it:200,ok:false};
+}
+//--UI--
+const $=id=>document.getElementById(id),sv=$('plot'),ref=solve('p',0.04);
+const W=640,H=280,pl=44,pr=12,pt=12,pb=28,y0=-1.6,y1=0.6;
+const sx=x=>pl+x*(W-pl-pr),sy=y=>pt+(y1-Math.max(y0,Math.min(y1,y)))/(y1-y0)*(H-pt-pb);
+const path=(u,st,dash)=>{let q='';for(let i=0;i<=N;i++)q+=(i?'L':'M')+sx(i/N).toFixed(1)+' '+sy(u[i]).toFixed(1);return `<path d="${q}" fill="none" stroke="${st}" stroke-width="2.5"${dash?' stroke-dasharray="'+dash+'"':''}/>`};
+function report(r){return r.ok?'converged in '+r.it+' iterations, u(0) = '+r.u[0].toFixed(3):'did not converge'}
+function draw(){
+  const u0=+$('u0').value;$('uv').textContent=u0.toFixed(2);
+  const p=solve('p',u0),n=solve('n',u0);
+  let s='<g stroke="var(--line)" fill="var(--mute)" font-size="12">';
+  [-1.5,-1,-0.5,0,0.5].forEach(v=>{s+=`<line x1="${pl}" x2="${W-pr}" y1="${sy(v)}" y2="${sy(v)}"/><text x="${pl-8}" y="${sy(v)+4}" text-anchor="end" stroke="none">${v}</text>`});
+  [0,0.25,0.5,0.75,1].forEach(v=>{s+=`<text x="${sx(v)}" y="${H-8}" text-anchor="middle" stroke="none">${v}</text>`});
+  s+='</g>'+path(ref.u,'var(--mute)','6 5');
+  if(p.ok)s+=path(p.u,'var(--fem)');if(n.ok)s+=path(n.u,'var(--exact)','2 5');
+  sv.innerHTML=s;$('pi').textContent=report(p);$('ni').textContent=report(n);
+}
+$('u0').addEventListener('input',draw);draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Transient Heat Conduction in a Plate: Time-Stepping and Stability</title>
+<style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#eef2f5;--panel:#fff;--ink:#12263a;--mute:#52667a;--line:#c9d4de;--fem:#1b6ca8;--exact:#b3205f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a25;--panel:#16232f;--ink:#e6edf3;--mute:#9fb2c3;--line:#2b3d4e;--fem:#5db0ee;--exact:#ff6fa5}}
+:root[data-theme="dark"]{--bg:#0f1a25;--panel:#16232f;--ink:#e6edf3;--mute:#9fb2c3;--line:#2b3d4e;--fem:#5db0ee;--exact:#ff6fa5}
+*,*:before,*:after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:32px 20px 56px}
+h1{font:700 clamp(28px,5vw,40px)/1.15 Georgia,"Times New Roman",serif;margin:0 0 12px;letter-spacing:-.01em}
+h2{font:700 22px/1.3 Georgia,serif;margin:40px 0 10px}
+p{margin:0 0 12px;max-width:68ch}
+.lead{font-size:18px;color:var(--mute)}
+.tags{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0;padding:0;list-style:none}
+.tags li{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 12px;font-size:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px}
+.card{display:grid;gap:6px;margin-bottom:28px}
+.card small{color:var(--mute)}
+.demo header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;margin-bottom:12px}
+.demo label{font-weight:600}
+input[type=range]{flex:1 1 200px;accent-color:var(--fem)}
+select{font:inherit;padding:2px 6px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:4px}
+.modes{display:flex;flex-wrap:wrap;gap:6px 18px;margin-bottom:12px}
+.modes label{font-weight:400}
+svg{width:100%;height:auto;display:block}
+canvas{display:block;width:min(100%,560px);aspect-ratio:2/1;border:1px solid var(--line)}
+.bar{height:10px;width:min(100%,560px);margin-top:8px;border-radius:2px;background:linear-gradient(90deg,#142850,#1b6ca8,#f0dc78)}
+.scale{display:flex;justify-content:space-between;width:min(100%,560px);font-size:13px;color:var(--mute)}
+.key span{display:inline-block;width:22px;height:0;border-top:3px solid var(--fem);vertical-align:middle;margin-right:6px}
+.key span.e{border-top:3px dashed var(--exact);margin-left:14px}
+.key span.r{border-top:2px dashed var(--mute);margin-left:14px}
+.stats{display:flex;flex-wrap:wrap;gap:4px 28px;margin-top:10px;font-size:14px;color:var(--mute)}
+.stats b{color:var(--ink)}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:420px;font-size:15px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right}
+th:first-child,td:first-child{text-align:left}
+ul.find{padding-left:20px;margin:0}ul.find li{margin-bottom:8px;max-width:68ch}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace}
+.note{margin-top:8px;color:var(--mute);font-size:14px}
+</style>
+</head>
+<body>
+<main>
+<section class="panel card" aria-label="Portfolio card">
+  <h1>Transient Heat Conduction in a Plate: Time-Stepping and Stability</h1>
+  <p class="lead">A Galerkin finite element model of a plate cooling toward a steady state, used to compare explicit and implicit time-stepping. The explicit scheme blows up, the implicit one does not.</p>
+  <ul class="tags"><li>Galerkin FEM</li><li>θ-method time stepping</li><li>Quadratic elements</li><li>Stability analysis</li><li>Transient heat transfer</li></ul>
+  <small>University of Thessaly, Mechanical Engineering. Computational Fluid Dynamics with Finite Elements course, Assignment 1</small>
+</section>
+
+<h2>The problem</h2>
+<p>A plate of thickness L = 0.2 m starts at 100 °C. Its left face is insulated, its right face is held at 50 °C, and a heat source acts inside it. Temperature T(x, t) obeys:</p>
+<p><code>∂T/∂t = a ∂²T/∂x² + q,&nbsp; ∂T/∂x(0) = 0,&nbsp; T(L) = 50 °C,&nbsp; T(x, 0) = 100 °C</code></p>
+<p>The questions: which time-stepping scheme is stable, how long the plate takes to reach steady state, and how the heat loss at the right face evolves.</p>
+
+<h2>Try it: pick a time-stepping scheme</h2>
+<div class="panel demo">
+  <header>
+    <label for="mesh">Mesh and time step</label>
+    <select id="mesh">
+      <option value="10">10 elements, Δt = 100 s</option>
+      <option value="20" selected>20 elements, Δt = 50 s</option>
+      <option value="40">40 elements, Δt = 25 s</option>
+      <option value="80">80 elements, Δt = 12.5 s</option>
+    </select>
+  </header>
+  <div class="modes" role="radiogroup" aria-label="Time-stepping scheme">
+    <label><input type="radio" name="th" value="0"> θ = 0, explicit</label>
+    <label><input type="radio" name="th" value="0.5"> θ = 0.5, trapezoidal</label>
+    <label><input type="radio" name="th" value="1" checked> θ = 1, fully implicit</label>
+  </div>
+  <header>
+    <label for="t">Time: <output id="tv">60</output> × 10³ s</label>
+    <input id="t" type="range" min="0" max="200" step="2" value="60">
+  </header>
+  <svg id="plot" viewBox="0 0 640 300" role="img" aria-label="Temperature across the plate at the chosen time"></svg>
+  <div class="key"><span></span>Temperature now<span class="r"></span>Steady state</div>
+  <div class="stats"><span>T at x = 0: <b id="t0">–</b></span><span><b id="st"></b></span></div>
+  <div class="stats">The solver runs live in your browser with 2-node elements. Material values (k = 2 W/m·K, ρc<sub>p</sub> = 1.5×10⁶ J/m³K, source 1000 W/m³) are inferred from the report's plots, not quoted from it.</div>
+</div>
+
+<h2>Approach</h2>
+<ul class="find">
+<li><b>Space.</b> Galerkin finite elements turn the equation into a system of ordinary differential equations, [M]{Ṫ} + [K]{T} = {F}. The report used 3-node quadratic elements.</li>
+<li><b>Time.</b> A θ-method blends the old and new time levels: θ = 0 is explicit, θ = 0.5 is the trapezoidal rule, θ = 1 is fully implicit.</li>
+<li><b>Boundary conditions.</b> The insulated face comes in naturally through the weak form. The fixed 50 °C face is imposed directly.</li>
+<li><b>Mesh study.</b> Start with 10 elements and Δt = 100 s, then double the elements and halve Δt, up to 80 elements and 12.5 s.</li>
+<li><b>Further studies.</b> Time to reach steady state against plate length and source strength, heat loss at the right face over time, and a heat-flux condition on the left face in place of insulation.</li>
+</ul>
+
+<h2>Results</h2>
+<div class="panel tbl">
+<table>
+<thead><tr><th>Scheme</th><th>Outcome (20 elements, Δt = 50 s)</th></tr></thead>
+<tbody>
+<tr><td>θ = 0, explicit</td><td>Unstable: temperatures reach about 10⁹⁴ with sawtooth oscillations</td></tr>
+<tr><td>θ = 0.5, trapezoidal</td><td>Stable</td></tr>
+<tr><td>θ = 1, fully implicit</td><td>Stable, settles at about 60 °C on the insulated face</td></tr>
+</tbody></table>
+</div>
+<p class="note">Read from the report plots. The live demo above reproduces the stability behavior for each scheme.</p>
+
+<h2>What I found</h2>
+<ul class="find">
+<li>The explicit scheme is only conditionally stable. With these mesh sizes the time steps used are too large for it, so the solution diverges. The fully implicit scheme is stable for any time step.</li>
+<li>Heat loss at the right face falls exponentially with time and levels off at about 200 W/m².</li>
+<li>Time to steady state is about 1.2×10⁵ s and grows roughly with the square of plate length, as diffusion scaling predicts. One run shows an unexpected dip near L = 0.5 m that I did not explain.</li>
+<li>Source strength has only a weak, roughly linear effect: about a 4% drop in settling time across the range tested.</li>
+<li>Adding a 50 W/m² heat flux on the left face raises the steady temperature, especially on that face, and shortens the time to steady state.</li>
+</ul>
+
+<h2>Key equations</h2>
+<pre>Semi-discrete system:   [M]{Ṫ} + [K]{T} = {F}
+θ-method update:        ([M] + θΔt[K]) {T}ˢ⁺¹ = ([M] − (1−θ)Δt[K]) {T}ˢ + Δt{F}</pre>
+</main>
+
+<script>
+const L=0.2,KC=2,RC=1.5e6,SRC=1000,A=KC/RC,Q=SRC/RC;
+function run(n,dt,th,tEnd){
+  const h=L/n,T=new Float64Array(n+1).fill(100);T[n]=50;
+  const ad=new Float64Array(n),bd=new Float64Array(n),f=new Float64Array(n),w=new Float64Array(n),den=new Float64Array(n),g=new Float64Array(n);
+  const Ao=h/6-th*dt*A/h,Bo=h/6+(1-th)*dt*A/h;
+  for(let i=0;i<n;i++){const e=i===0,md=e?h/3:2*h/3,kd=e?A/h:2*A/h;ad[i]=md+th*dt*kd;bd[i]=md-(1-th)*dt*kd;f[i]=dt*Q*(e?h/2:h)}
+  den[0]=ad[0];for(let i=1;i<n;i++){w[i]=Ao/den[i-1];den[i]=ad[i]-w[i]*Ao}
+  const steps=Math.round(tEnd/dt);let blown=false;
+  for(let s=0;s<steps;s++){
+    for(let i=0;i<n;i++){let r=bd[i]*T[i]+Bo*T[i+1]+f[i];if(i>0)r+=Bo*T[i-1];if(i===n-1)r-=Ao*50;g[i]=i?r-w[i]*g[i-1]:r}
+    T[n-1]=g[n-1]/den[n-1];for(let i=n-2;i>=0;i--)T[i]=(g[i]-Ao*T[i+1])/den[i];
+    if(!isFinite(T[0])||Math.abs(T[0])>1e100){blown=true;break}
+  }
+  let mx=0;for(let i=0;i<=n;i++)mx=Math.max(mx,Math.abs(T[i]));
+  return {T,h,blown,mx};
+}
+//--UI--
+const $=id=>document.getElementById(id),sv=$('plot');
+const W=640,H=300,pl=44,pr=12,pt=12,pb=28,y0=40,y1=110;
+const sx=x=>pl+x/L*(W-pl-pr),sy=y=>pt+(y1-Math.max(y0,Math.min(y1,y)))/(y1-y0)*(H-pt-pb);
+const dts={10:100,20:50,40:25,80:12.5};
+function draw(){
+  const th=+document.querySelector('input[name=th]:checked').value,n=+$('mesh').value,dt=dts[n],t=+$('t').value*1000;
+  $('tv').textContent=$('t').value;
+  const r=run(n,dt,th,t);
+  let s='<g stroke="var(--line)" fill="var(--mute)" font-size="12">';
+  [50,60,70,80,90,100].forEach(v=>{s+=`<line x1="${pl}" x2="${W-pr}" y1="${sy(v)}" y2="${sy(v)}"/><text x="${pl-8}" y="${sy(v)+4}" text-anchor="end" stroke="none">${v}</text>`});
+  [0,0.05,0.1,0.15,0.2].forEach(v=>{s+=`<text x="${sx(v)}" y="${H-8}" text-anchor="middle" stroke="none">${v}</text>`});
+  s+='</g>';
+  let p='';for(let i=0;i<=100;i++){const x=L*i/100;p+=(i?'L':'M')+sx(x).toFixed(1)+' '+sy(50+250*(L*L-x*x)).toFixed(1)}
+  s+=`<path d="${p}" fill="none" stroke="var(--mute)" stroke-width="2" stroke-dasharray="6 5"/>`;
+  let q='';for(let i=0;i<=r.T.length-1;i++)q+=(i?'L':'M')+sx(i*r.h).toFixed(1)+' '+sy(r.T[i]).toFixed(1);
+  s+=`<path d="${q}" fill="none" stroke="var(--fem)" stroke-width="2.5"/>`;
+  sv.innerHTML=s;
+  const fmt=v=>Math.abs(v)>1e4?v.toExponential(2):v.toFixed(2)+' °C';
+  $('t0').textContent=r.blown?'diverged':fmt(r.T[0]);
+  $('st').textContent=(r.blown||r.mx>1e3)?'Unstable: max |T| reaches '+(r.blown?'above 1e100':r.mx.toExponential(2)):'Stable';
+}
+document.querySelectorAll('input[name=th]').forEach(e=>e.addEventListener('change',draw));
+$('mesh').addEventListener('change',draw);$('t').addEventListener('input',draw);draw();
+</script>
+</body>
+</html>
