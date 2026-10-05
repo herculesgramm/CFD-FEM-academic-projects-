@@ -1,0 +1,11 @@
+40,80
+450.d0,0.8d0
+0.4d0,0.2d0
+0.d0,10.d0
+
+
+
+read (9,*) nelemx,nelemy
+ read (9,*) dens[=]kg/m3,mi[=]Pa*s
+ read (9,*) H1[=]m,H2[=]m
+ read (9,*) qn,theta[=]deg 
