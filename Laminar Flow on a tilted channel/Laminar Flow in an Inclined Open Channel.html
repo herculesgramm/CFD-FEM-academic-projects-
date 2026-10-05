@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Laminar Flow in an Inclined Open Channel</title>
+<style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#eef2f5;--panel:#fff;--ink:#12263a;--mute:#52667a;--line:#c9d4de;--fem:#1b6ca8;--exact:#b3205f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a25;--panel:#16232f;--ink:#e6edf3;--mute:#9fb2c3;--line:#2b3d4e;--fem:#5db0ee;--exact:#ff6fa5}}
+:root[data-theme="dark"]{--bg:#0f1a25;--panel:#16232f;--ink:#e6edf3;--mute:#9fb2c3;--line:#2b3d4e;--fem:#5db0ee;--exact:#ff6fa5}
+*,*:before,*:after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:32px 20px 56px}
+h1{font:700 clamp(28px,5vw,40px)/1.15 Georgia,"Times New Roman",serif;margin:0 0 12px;letter-spacing:-.01em}
+h2{font:700 22px/1.3 Georgia,serif;margin:40px 0 10px}
+p{margin:0 0 12px;max-width:68ch}
+.lead{font-size:18px;color:var(--mute)}
+.tags{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0;padding:0;list-style:none}
+.tags li{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 12px;font-size:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px}
+.card{display:grid;gap:6px;margin-bottom:28px}
+.card small{color:var(--mute)}
+.demo header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;margin-bottom:12px}
+.demo label{font-weight:600}
+input[type=range]{flex:1 1 200px;accent-color:var(--fem)}
+select{font:inherit;padding:2px 6px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:4px}
+.modes{display:flex;flex-wrap:wrap;gap:6px 18px;margin-bottom:12px}
+.modes label{font-weight:400}
+svg{width:100%;height:auto;display:block}
+canvas{display:block;width:min(100%,560px);aspect-ratio:2/1;border:1px solid var(--line)}
+.bar{height:10px;width:min(100%,560px);margin-top:8px;border-radius:2px;background:linear-gradient(90deg,#142850,#1b6ca8,#f0dc78)}
+.scale{display:flex;justify-content:space-between;width:min(100%,560px);font-size:13px;color:var(--mute)}
+.key span{display:inline-block;width:22px;height:0;border-top:3px solid var(--fem);vertical-align:middle;margin-right:6px}
+.key span.e{border-top:3px dashed var(--exact);margin-left:14px}
+.key span.r{border-top:2px dashed var(--mute);margin-left:14px}
+.stats{display:flex;flex-wrap:wrap;gap:4px 28px;margin-top:10px;font-size:14px;color:var(--mute)}
+.stats b{color:var(--ink)}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:420px;font-size:15px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right}
+th:first-child,td:first-child{text-align:left}
+ul.find{padding-left:20px;margin:0}ul.find li{margin-bottom:8px;max-width:68ch}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace}
+.note{margin-top:8px;color:var(--mute);font-size:14px}
+</style>
+</head>
+<body>
+<main>
+<section class="panel card" aria-label="Portfolio card">
+  <h1>Laminar Flow in an Inclined Open Channel</h1>
+  <p class="lead">A 2D finite element model of viscous flow down a sloped channel with a free surface. It predicts the velocity field, flow rate, Reynolds number and bed shear stress as the slope changes.</p>
+  <ul class="tags"><li>Galerkin FEM</li><li>Poisson equation</li><li>9-node quadratic elements</li><li>3-point Gauss integration</li><li>Open-channel hydraulics</li></ul>
+</section>
+
+<h2>The problem</h2>
+<p>A viscous fluid of density ρ and viscosity μ flows in fully developed laminar flow down a channel with a rectangular cross-section H<sub>1</sub> × H<sub>2</sub>, driven by gravity. The z axis points along the flow and θ is the slope of the channel. The velocity u<sub>z</sub>(x, y) satisfies a Poisson equation:</p>
+<p><code>μ (∂²u<sub>z</sub>/∂x² + ∂²u<sub>z</sub>/∂y²) = −ρ g sin θ</code></p>
+<p>The fluid sticks to the bed and side walls, so u<sub>z</sub> = 0 there. At the top surface (y = H<sub>2</sub>) the liquid meets air and the shear is zero, so ∂u<sub>z</sub>/∂y = 0. Values used: H<sub>1</sub> = 40 cm, H<sub>2</sub> = 20 cm, θ = 10°, ρ = 450 kg/m³, μ = 0.8 Pa·s.</p>
+<p>The assignment asked for: the weak form with bi-quadratic Lagrange quadrilateral elements, a finite element code with 3-point Gauss integration in each direction, velocity plots for four meshes, mass flow and Reynolds number as the slope changes from 5° to 30°, and the bed shear stress for different slopes.</p>
+
+<figure class="panel" style="margin:16px 0 0">
+<svg viewBox="0 0 640 250" role="img" aria-label="Left: side view of a channel inclined at angle theta with flow direction z and gravity g. Right: the rectangular cross-section, width H1 and height H2, with zero velocity on the bed and side walls and zero shear at the free surface.">
+<defs>
+<marker id="a1" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9z" fill="var(--exact)"/></marker>
+<marker id="a2" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9z" fill="var(--ink)"/></marker>
+</defs>
+<g font-size="15" fill="var(--ink)" text-anchor="middle">
+<text x="150" y="24" font-weight="600">Side view</text><text x="450" y="24" font-weight="600">Cross-section (solution domain)</text>
+<line x1="30" y1="205" x2="300" y2="205" stroke="var(--mute)" stroke-dasharray="6 5"/>
+<g transform="rotate(-18 40 205)"><rect x="40" y="170" width="250" height="35" fill="var(--fem)" fill-opacity=".25" stroke="var(--fem)" stroke-width="2"/>
+<line x1="250" y1="187" x2="90" y2="187" stroke="var(--exact)" stroke-width="3" marker-end="url(#a1)"/><text x="170" y="178" fill="var(--exact)">flow, z</text></g>
+<path d="M100 205 A60 60 0 0 0 97.06 186.46" fill="none" stroke="var(--ink)"/><text x="116" y="198" font-style="italic">θ</text>
+<line x1="60" y1="55" x2="60" y2="115" stroke="var(--ink)" stroke-width="2" marker-end="url(#a2)"/><text x="78" y="90" font-style="italic">g</text>
+<rect x="360" y="80" width="180" height="90" fill="var(--fem)" fill-opacity=".25" stroke="var(--ink)" stroke-width="2"/>
+<g font-size="14"><text x="366" y="130" text-anchor="start">u<tspan font-size="11" dy="3">z</tspan><tspan dy="-3"> = 0</tspan></text>
+<text x="534" y="130" text-anchor="end">u<tspan font-size="11" dy="3">z</tspan><tspan dy="-3"> = 0</tspan></text>
+<text x="450" y="160">u<tspan font-size="11" dy="3">z</tspan><tspan dy="-3"> = 0</tspan></text>
+<text x="450" y="64">∂u<tspan font-size="11" dy="3">z</tspan><tspan dy="-3">/∂y = 0 (free surface)</tspan></text></g>
+<line x1="345" y1="80" x2="345" y2="170" stroke="var(--mute)"/><text x="333" y="130" text-anchor="end">H₂</text>
+<line x1="360" y1="190" x2="540" y2="190" stroke="var(--mute)"/><text x="450" y="212">H₁</text>
+<line x1="575" y1="205" x2="575" y2="150" stroke="var(--ink)" stroke-width="1.5" marker-end="url(#a2)"/><text x="565" y="152" text-anchor="end" font-style="italic">y</text>
+<line x1="575" y1="205" x2="625" y2="205" stroke="var(--ink)" stroke-width="1.5" marker-end="url(#a2)"/><text x="625" y="224" font-style="italic">x</text>
+</g>
+</svg>
+<figcaption class="note">The inclined channel, its cross-section, the boundary conditions and the axes.</figcaption>
+</figure>
+
+<h2>Approach</h2>
+<ul class="find">
+<li><b>Weak form.</b> Multiplying by a test function and applying Green's theorem gives [K]{u} = {F} + {Q}, with Q holding any boundary flux. On the bed and walls the velocity is fixed, so Q = 0 there. At the free surface the zero-shear condition is natural.</li>
+<li><b>Elements.</b> Rectangular 9-node elements with bi-quadratic Lagrange shape functions. The element matrix is computed once per element and added into the global matrix at the element's node positions.</li>
+<li><b>Integration and code.</b> Element integrals use 3-point Gauss quadrature in each direction. The code solves the equation with the boundary conditions above for any mesh and slope.</li>
+<li><b>Post-processing.</b> Hydraulic diameter D<sub>h</sub> = 4A/P = 0.4 m, using the wetted perimeter (bed plus two walls). Reynolds number and mass flow follow from the velocity field. Bed shear stress is μ ∂u<sub>z</sub>/∂y along the bed.</li>
+<li><b>Studies.</b> Velocity contours for 10×5, 20×10, 40×20 and 80×40 meshes at 10°, then a sweep of slope from 5° to 30° on the 40×20 mesh.</li>
+</ul>
+
+<h2>Try it: tilt the channel</h2>
+<div class="panel demo">
+  <header>
+    <label for="th">Slope: <output id="thv">10</output>°</label>
+    <input id="th" type="range" min="1" max="30" step="0.5" value="10">
+  </header>
+  <header>
+    <label for="mesh">Mesh</label>
+    <select id="mesh"><option value="5">10 × 5</option><option value="10" selected>20 × 10</option><option value="20">40 × 20</option><option value="40">80 × 40</option></select>
+  </header>
+  <svg id="map" viewBox="0 0 640 341" role="img" aria-label="Velocity across the channel cross-section"></svg>
+  <div class="bar"></div>
+  <div class="scale"><span>0 m/s</span><span id="hi">–</span></div>
+  <div class="stats"><span>Peak velocity: <b id="um">–</b></span><span>Mass flow: <b id="mf">–</b></span><span>Reynolds number: <b id="re">–</b></span><span>Peak bed shear: <b id="ts">–</b></span></div>
+  <div class="stats"><b id="reg"></b></div>
+  <div class="stats">The solver runs live in your browser with 4-node elements, so values differ slightly from the report's 9-node results. The free surface is the top edge.</div>
+</div>
+
+<h2>Results</h2>
+<div class="panel tbl">
+<table>
+<thead><tr><th>Slope</th><th>Reynolds number</th><th>Mass flow</th><th>Peak bed shear</th></tr></thead>
+<tbody>
+<tr><td>5°</td><td>~600</td><td>~100 kg/s</td><td>~52 Pa</td></tr>
+<tr><td>15°</td><td>~1900</td><td>~300 kg/s</td><td>~154 Pa</td></tr>
+<tr><td>30°</td><td>~3500</td><td>~560 kg/s</td><td>–</td></tr>
+</tbody></table>
+</div>
+<p class="note">Read from the report plots, so values are approximate. Bed shear was computed for slopes up to 15°.</p>
+
+<h2>What I found</h2>
+<ul class="find">
+<li>The velocity peaks at the middle of the free surface and changes sharply near the top corners. The method is stable, and a 20 × 10 mesh already gives a satisfactory picture.</li>
+<li>Mass flow and Reynolds number grow almost linearly with slope.
+<figure class="panel" style="margin:12px 0 4px"><svg id="fMf" viewBox="0 0 640 330" role="img" aria-label="Mass flow against channel slope"></svg><figcaption class="note">Mass flow against slope for the 40 × 20 mesh.</figcaption></figure></li>
+<li>Flow in channels turns turbulent somewhere between Reynolds numbers of about 750 and 3000. Taking 1875 as the threshold puts the transition near 15°, beyond which the laminar model no longer applies.
+<figure class="panel" style="margin:12px 0 4px"><svg id="fRe" viewBox="0 0 640 330" role="img" aria-label="Reynolds number against channel slope with the assumed critical value"></svg><figcaption class="note">Reynolds number against slope for the 40 × 20 mesh. The dashed lines mark the assumed critical value of 1875 and the slope where it is reached.</figcaption></figure></li>
+<li>Bed shear stress has a parabolic profile across the channel, largest at mid-width, and grows with slope.
+<figure class="panel" style="margin:12px 0 4px"><svg id="fTau" viewBox="0 0 640 330" role="img" aria-label="Bed shear stress across the channel width for slopes from 5 to 15 degrees"></svg><figcaption class="note">Bed shear stress across the channel width for slopes of 5°, 7.5°, 10°, 12.5° and 15°, on the 40 × 20 mesh.</figcaption></figure></li>
+</ul>
+
+<h2>Key equations</h2>
+<pre>Weak form per element:  Σⱼ [ ∬ ∇φᵢ·∇φⱼ dΩ ] uⱼ = ∬ φᵢ f dΩ + ∮ φᵢ qₙ dS
+Source term:            f = ρ g sin θ / μ
+Hydraulic diameter:     Dh = 4(H₁H₂) / (H₁ + 2H₂)</pre>
+</main>
+
+<script>
+
+function solveField(nx,ny){
+  const hx=0.4/nx,hy=0.2/ny,qx=nx+1,m=qx*(ny+1),coef=new Float64Array(m*9),F=new Float64Array(m);
+  const g=1/Math.sqrt(3),gp=[-g,g],xi=[-1,1,1,-1],et=[-1,-1,1,1],ox=[0,1,1,0],oy=[0,0,1,1];
+  const Ke=[0,1,2,3].map(()=>[0,0,0,0]),jac=hx*hy/4;
+  for(const a of gp)for(const b of gp){
+    const dx=[],dy=[];
+    for(let i=0;i<4;i++){dx[i]=xi[i]*(1+et[i]*b)/4*2/hx;dy[i]=et[i]*(1+xi[i]*a)/4*2/hy}
+    for(let i=0;i<4;i++)for(let j=0;j<4;j++)Ke[i][j]+=(dx[i]*dx[j]+dy[i]*dy[j])*jac;
+  }
+  for(let ey=0;ey<ny;ey++)for(let ex=0;ex<nx;ex++)for(let a=0;a<4;a++){
+    const na=(ey+oy[a])*qx+ex+ox[a];F[na]+=hx*hy/4;
+    for(let b=0;b<4;b++)coef[na*9+(oy[b]-oy[a]+1)*3+ox[b]-ox[a]+1]+=Ke[a][b];
+  }
+  const u=new Float64Array(m),w=2/(1+Math.sin(Math.PI/Math.max(nx,ny)));
+  for(let it=0;it<20000;it++){
+    let d=0;
+    for(let j=1;j<=ny;j++)for(let i=1;i<nx;i++){
+      const k=j*qx+i;let s=0;
+      for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){
+        if(!di&&!dj)continue;const jj=j+dj,ii=i+di;
+        if(jj<0||jj>ny)continue;s+=coef[k*9+(dj+1)*3+di+1]*u[jj*qx+ii];
+      }
+      const v=(1-w)*u[k]+w*(F[k]-s)/coef[k*9+4];d=Math.max(d,Math.abs(v-u[k]));u[k]=v;
+    }
+    if(d<1e-12)break;
+  }
+  return {u,nx,ny,hx,hy,qx};
+}
+function metrics(f,deg){
+  const rho=450,mu=0.8,c=rho*9.81*Math.sin(deg*Math.PI/180)/mu,{u,nx,ny,hx,hy,qx}=f;
+  let mx=0,Qv=0;
+  for(let j=0;j<=ny;j++)for(let i=0;i<=nx;i++){
+    const v=u[j*qx+i];mx=Math.max(mx,v);Qv+=v*hx*hy*(i===0||i===nx?.5:1)*(j===0||j===ny?.5:1);
+  }
+  Qv*=c;const Ar=0.08,Dh=4*Ar/0.8;let ts=0;
+  for(let i=1;i<nx;i++)ts=Math.max(ts,mu*c*(4*u[qx+i]-u[2*qx+i])/(2*hy));
+  return {umax:c*mx,mass:rho*Qv,Re:rho*(Qv/Ar)*Dh/mu,tau:ts,c};
+}
+//--UI--
+const $=id=>document.getElementById(id),stops=[[20,40,80],[27,108,168],[240,220,120]],cache={};
+const cv=document.createElement('canvas');cv.width=320;cv.height=160;const ctx=cv.getContext('2d');
+function ramp(t){t=Math.max(0,Math.min(1,t));const s=t*2,i=Math.min(Math.floor(s),1),f=s-i,a=stops[i],b=stops[i+1];return a.map((v,k)=>Math.round(v+(b[k]-v)*f))}
+const field=n=>cache[n]||(cache[n]=solveField(n*2,n));
+function drawMap(){
+  const deg=+$('th').value,n=+$('mesh').value;$('thv').textContent=deg;
+  const f=field(n),m=metrics(f,deg),W=cv.width,H=cv.height,img=ctx.createImageData(W,H),{u,nx,ny,qx}=f;
+  let pm=0;for(let k=0;k<u.length;k++)pm=Math.max(pm,u[k]);
+  for(let py=0;py<H;py++)for(let px=0;px<W;px++){
+    const fx=(px+.5)/W*nx,fy=(1-(py+.5)/H)*ny,i=Math.min(Math.floor(fx),nx-1),j=Math.min(Math.floor(fy),ny-1),tx=fx-i,ty=fy-j;
+    const v=u[j*qx+i]*(1-tx)*(1-ty)+u[j*qx+i+1]*tx*(1-ty)+u[(j+1)*qx+i]*(1-tx)*ty+u[(j+1)*qx+i+1]*tx*ty;
+    const c=ramp(v/pm),o=(py*W+px)*4;img.data[o]=c[0];img.data[o+1]=c[1];img.data[o+2]=c[2];img.data[o+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+  const Wd=640,pl=70,pr=16,pt=12,pw=Wd-pl-pr,ph=pw/2,Hd=pt+ph+52;
+  let s=`<image href="${cv.toDataURL()}" x="${pl}" y="${pt}" width="${pw}" height="${ph}" preserveAspectRatio="none"/><rect x="${pl}" y="${pt}" width="${pw}" height="${ph}" fill="none" stroke="var(--ink)"/><g fill="var(--mute)" font-size="12">`;
+  [0,0.1,0.2,0.3,0.4].forEach(v=>{s+=`<text x="${pl+v/0.4*pw}" y="${pt+ph+18}" text-anchor="middle">${v}</text>`});
+  [0,0.1,0.2].forEach(v=>{s+=`<text x="${pl-8}" y="${pt+ph-v/0.2*ph+4}" text-anchor="end">${v}</text>`});
+  s+=`</g><g font-size="14" fill="var(--ink)" text-anchor="middle"><text x="${pl+pw/2}" y="${Hd-8}">Distance x (m)</text><text transform="translate(16 ${pt+ph/2}) rotate(-90)">Height y (m)</text></g>`;
+  $('map').innerHTML=s;
+  $('hi').textContent=m.umax.toFixed(1)+' m/s';$('um').textContent=m.umax.toFixed(1)+' m/s';
+  $('mf').textContent=m.mass.toFixed(0)+' kg/s';$('re').textContent=m.Re.toFixed(0);$('ts').textContent=m.tau.toFixed(0)+' Pa';
+  $('reg').textContent=m.Re>1875?'Reynolds number is above 1875, the threshold used in the report: flow is likely turbulent and this laminar model no longer applies.':'Reynolds number is below 1875: laminar flow, so the model applies.';
+}
+$('th').addEventListener('input',drawMap);$('mesh').addEventListener('change',drawMap);drawMap();
+function chart(id,o){
+  const W=640,H=330,pl=80,pr=26,pt=14,pb=50,sv=$(id);
+  const sx=x=>pl+(x-o.x0)/(o.x1-o.x0)*(W-pl-pr),sy=y=>pt+(o.y1-Math.max(o.y0,Math.min(o.y1,y)))/(o.y1-o.y0)*(H-pt-pb);
+  let s='<g stroke="var(--line)" fill="var(--mute)" font-size="12">';
+  o.yt.forEach(v=>{s+=`<line x1="${pl}" x2="${W-pr}" y1="${sy(v)}" y2="${sy(v)}"/><text x="${pl-8}" y="${sy(v)+4}" text-anchor="end" stroke="none">${v}</text>`});
+  o.xt.forEach(v=>{s+=`<text x="${sx(v)}" y="${H-pb+18}" text-anchor="middle" stroke="none">${v}</text>`});
+  s+=`</g><g font-size="14" fill="var(--ink)" text-anchor="middle"><text x="${pl+(W-pl-pr)/2}" y="${H-8}">${o.xl}</text><text transform="translate(16 ${pt+(H-pt-pb)/2}) rotate(-90)">${o.yl}</text></g>`;
+  if(o.h)s+=`<line x1="${pl}" x2="${W-pr}" y1="${sy(o.h)}" y2="${sy(o.h)}" stroke="var(--mute)" stroke-dasharray="6 5"/><text x="${pl+8}" y="${sy(o.h)-6}" font-size="13" fill="var(--mute)">${o.hl}</text>`;
+  if(o.v)s+=`<line x1="${sx(o.v)}" x2="${sx(o.v)}" y1="${pt}" y2="${H-pb}" stroke="var(--mute)" stroke-dasharray="6 5"/><text x="${sx(o.v)+6}" y="${H-pb-8}" font-size="13" fill="var(--mute)">${o.vl}</text>`;
+  o.s.forEach(c=>{let q='';c.p.forEach((a,i)=>{q+=(i?'L':'M')+sx(a[0]).toFixed(1)+' '+sy(a[1]).toFixed(1)});s+=`<path d="${q}" fill="none" style="stroke:${c.c}" stroke-width="2.4"/>`});
+  (o.tx||[]).forEach(t=>{s+=`<text x="${sx(t[0])}" y="${sy(t[1])+t[3]}" font-size="12" text-anchor="middle" fill="var(--ink)">${t[2]}</text>`});
+  sv.innerHTML=s;
+}
+(function(){
+  const f=field(20),degs=[],mf=[],re=[];
+  for(let d=5;d<=30;d+=0.5){const m=metrics(f,d);degs.push(d);mf.push([d,m.mass]);re.push([d,m.Re])}
+  const fem='var(--fem)';
+  chart('fMf',{x0:5,x1:30,y0:0,y1:600,xt:[5,10,15,20,25,30],yt:[0,100,200,300,400,500,600],xl:'Slope θ (°)',yl:'Mass flow (kg/s)',s:[{p:mf,c:fem}]});
+  const r5=re[0][1],thc=Math.asin(1875*Math.sin(5*Math.PI/180)/r5)*180/Math.PI;
+  chart('fRe',{x0:5,x1:30,y0:500,y1:3500,xt:[5,10,15,20,25,30],yt:[500,1000,1500,2000,2500,3000,3500],xl:'Slope θ (°)',yl:'Reynolds number',h:1875,hl:'critical Re = 1875 (assumed)',v:thc,vl:'about '+thc.toFixed(1)+'°',s:[{p:re,c:fem}]});
+  const angs=[5,7.5,10,12.5,15],{u,nx,hx,hy,qx}=f,tau=[];
+  angs.forEach((a,k)=>{const c=450*9.81*Math.sin(a*Math.PI/180)/0.8,p=[[0,0]];for(let i=1;i<nx;i++)p.push([i*hx,0.8*c*(4*u[qx+i]-u[2*qx+i])/(2*hy)]);p.push([0.4,0]);tau.push({p,c:`color-mix(in srgb, var(--exact) ${Math.round(100*(1-k/4))}%, var(--fem))`})});
+  chart('fTau',{x0:0,x1:0.4,y0:0,y1:160,xt:[0,0.1,0.2,0.3,0.4],yt:[0,20,40,60,80,100,120,140,160],xl:'Distance x across the bed (m)',yl:'Bed shear stress (Pa)',s:tau,tx:angs.map((a,k)=>[0.2,tau[k].p[Math.floor(nx/2)][1],a+'°',-6])});
+})();
+</script>
+</body>
+</html>
